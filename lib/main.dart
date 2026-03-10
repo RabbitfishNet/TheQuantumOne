@@ -98,6 +98,36 @@ class Api {
     }
   }
 
+  static Future<List<double>> ethChart() async {
+    try {
+      final r = await _c.get(Uri.parse(
+        'https://api.coingecko.com/api/v3/coins/ethereum/market_chart'
+        '?vs_currency=usd&days=7',
+      ));
+      if (r.statusCode != 200) return [];
+      final data = jsonDecode(r.body);
+      final prices = data['prices'] as List;
+      return prices.map<double>((p) => (p[1] as num).toDouble()).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<List<double>> solChart() async {
+    try {
+      final r = await _c.get(Uri.parse(
+        'https://api.coingecko.com/api/v3/coins/solana/market_chart'
+        '?vs_currency=usd&days=7',
+      ));
+      if (r.statusCode != 200) return [];
+      final data = jsonDecode(r.body);
+      final prices = data['prices'] as List;
+      return prices.map<double>((p) => (p[1] as num).toDouble()).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
   /// Reddit public JSON API — rich news with real thumbnails, no key needed.
   /// Pulls from multiple subreddits for variety.
   static Future<List<Map<String, dynamic>>> news() async {
@@ -873,6 +903,8 @@ class _DashboardState extends State<QuantumDashboardPage>
   Map<String, dynamic>? _weather;
   Map<String, dynamic>? _crypto;
   List<double> _btcChart = [];
+  List<double> _ethChart = [];
+  List<double> _solChart = [];
   List<Map<String, dynamic>> _news = [];
   List<dynamic> _shows = [];
   List<dynamic> _latestShows = [];
@@ -1009,6 +1041,8 @@ class _DashboardState extends State<QuantumDashboardPage>
       Api.weather(_homeLat, _homeLng),
       Api.crypto(),
       Api.btcChart(),
+      Api.ethChart(),
+      Api.solChart(),
       Api.news(),
       Api.shows(),
       Api.meal(),
@@ -1037,34 +1071,36 @@ class _DashboardState extends State<QuantumDashboardPage>
       _weather = results[0] as Map<String, dynamic>?;
       _crypto = results[1] as Map<String, dynamic>?;
       _btcChart = results[2] as List<double>;
-      _news = results[3] as List<Map<String, dynamic>>;
-      final showsResult = results[4] as List<dynamic>;
+      _ethChart = results[3] as List<double>;
+      _solChart = results[4] as List<double>;
+      _news = results[5] as List<Map<String, dynamic>>;
+      final showsResult = results[6] as List<dynamic>;
       _shows = showsResult.length == 2 ? showsResult : [<dynamic>[], <dynamic>[]];
-      _meal = results[5] as Map<String, dynamic>?;
-      final q = results[6] as Map<String, dynamic>?;
+      _meal = results[7] as Map<String, dynamic>?;
+      final q = results[8] as Map<String, dynamic>?;
       _quoteText = q?['q'] as String? ??
           'The only way to do great work is to love what you do.';
       _quoteAuthor = q?['a'] as String? ?? 'Steve Jobs';
-      _quiz = results[7] as Map<String, dynamic>?;
-      _latestShows = results[8] as List<dynamic>;
-      _exchange = results[9] as Map<String, dynamic>?;
-      _worldBank = results[10] as Map<String, dynamic>?;
-      _countriesList = results[11] as List<Map<String, dynamic>>;
-      _bored = results[12] as Map<String, dynamic>?;
-      _sunriseSunset = results[13] as Map<String, dynamic>?;
-      _advice = results[14] as String?;
-      _books = results[15] as List<Map<String, dynamic>>;
-      _airQuality = results[16] as Map<String, dynamic>?;
-      _deckCards = results[17] as Map<String, dynamic>?;
-      _ocean = results[18] as Map<String, dynamic>?;
+      _quiz = results[9] as Map<String, dynamic>?;
+      _latestShows = results[10] as List<dynamic>;
+      _exchange = results[11] as Map<String, dynamic>?;
+      _worldBank = results[12] as Map<String, dynamic>?;
+      _countriesList = results[13] as List<Map<String, dynamic>>;
+      _bored = results[14] as Map<String, dynamic>?;
+      _sunriseSunset = results[15] as Map<String, dynamic>?;
+      _advice = results[16] as String?;
+      _books = results[17] as List<Map<String, dynamic>>;
+      _airQuality = results[18] as Map<String, dynamic>?;
+      _deckCards = results[19] as Map<String, dynamic>?;
+      _ocean = results[20] as Map<String, dynamic>?;
       _space = {
-        'iss': results[19] as Map<String, dynamic>?,
-        'neo': results[20] as Map<String, dynamic>?,
-        'exoplanets': results[21] as List<Map<String, dynamic>>,
+        'iss': results[21] as Map<String, dynamic>?,
+        'neo': results[22] as Map<String, dynamic>?,
+        'exoplanets': results[23] as List<Map<String, dynamic>>,
       };
-      _ev = results[22] as Map<String, dynamic>?;
-      _ai = results[23] as Map<String, dynamic>?;
-      _voice = results[24] as Map<String, dynamic>?;
+      _ev = results[24] as Map<String, dynamic>?;
+      _ai = results[25] as Map<String, dynamic>?;
+      _voice = results[26] as Map<String, dynamic>?;
       _loading = false;
     });
     _fetchCommute();
@@ -1212,11 +1248,13 @@ class _DashboardState extends State<QuantumDashboardPage>
   }
 
   Future<void> _refreshCrypto() async {
-    final results = await Future.wait([Api.crypto(), Api.btcChart()]);
+    final results = await Future.wait([Api.crypto(), Api.btcChart(), Api.ethChart(), Api.solChart()]);
     if (mounted) {
       setState(() {
         _crypto = results[0] as Map<String, dynamic>?;
         _btcChart = results[1] as List<double>;
+        _ethChart = results[2] as List<double>;
+        _solChart = results[3] as List<double>;
       });
     }
   }
@@ -1435,7 +1473,15 @@ class _DashboardState extends State<QuantumDashboardPage>
           onRefresh: _fetchCommute,
         );
       case 'stats':
-        return _StatsRibbon(crypto: _crypto, newsCount: _news.length, loading: _loading, onRefresh: _refreshCrypto);
+        return _StatsRibbon(
+          crypto: _crypto,
+          btcChart: _btcChart,
+          ethChart: _ethChart,
+          solChart: _solChart,
+          newsCount: _news.length,
+          loading: _loading,
+          onRefresh: _refreshCrypto,
+        );
       case 'news':
         return _NewsCard(stories: _news, loading: _loading, onRefresh: _refreshNews);
       case 'shows':
@@ -2652,11 +2698,17 @@ class _LocationSettingsDialogState extends State<_LocationSettingsDialog> {
 class _StatsRibbon extends StatelessWidget {
   const _StatsRibbon({
     required this.crypto,
+    required this.btcChart,
+    required this.ethChart,
+    required this.solChart,
     required this.newsCount,
     required this.loading,
     required this.onRefresh,
   });
   final Map<String, dynamic>? crypto;
+  final List<double> btcChart;
+  final List<double> ethChart;
+  final List<double> solChart;
   final int newsCount;
   final bool loading;
   final Future<void> Function() onRefresh;
@@ -2687,14 +2739,25 @@ class _StatsRibbon extends StatelessWidget {
     }
 
     final tiles = [
-      _StatTileData(Icons.currency_bitcoin, K.gWarm, 'Bitcoin',
-          fmtPrice(btc, '\$68.1k'), fmtChange(btc), changeColor(btc)),
-      _StatTileData(Icons.diamond_outlined, K.gCyan, 'Ethereum',
-          fmtPrice(eth, '\$3.8k'), fmtChange(eth), changeColor(eth)),
-      _StatTileData(Icons.bolt_rounded, K.gPurple, 'Solana',
-          fmtPrice(sol, '\$142'), fmtChange(sol), changeColor(sol)),
-      _StatTileData(Icons.newspaper_rounded, K.gGreen, 'Live Feed',
-          '$newsCount stories', 'Reddit', K.emerald),
+      _StatTileData(
+        icon: Icons.currency_bitcoin, gradColors: K.gWarm, label: 'Bitcoin',
+        value: fmtPrice(btc, '\$68.1k'), badge: fmtChange(btc), badgeColor: changeColor(btc),
+        coinId: 'bitcoin', coinData: btc, chart: btcChart, symbol: 'BTC',
+      ),
+      _StatTileData(
+        icon: Icons.diamond_outlined, gradColors: K.gCyan, label: 'Ethereum',
+        value: fmtPrice(eth, '\$3.8k'), badge: fmtChange(eth), badgeColor: changeColor(eth),
+        coinId: 'ethereum', coinData: eth, chart: ethChart, symbol: 'ETH',
+      ),
+      _StatTileData(
+        icon: Icons.bolt_rounded, gradColors: K.gPurple, label: 'Solana',
+        value: fmtPrice(sol, '\$142'), badge: fmtChange(sol), badgeColor: changeColor(sol),
+        coinId: 'solana', coinData: sol, chart: solChart, symbol: 'SOL',
+      ),
+      _StatTileData(
+        icon: Icons.newspaper_rounded, gradColors: K.gGreen, label: 'Live Feed',
+        value: '$newsCount stories', badge: 'Reddit', badgeColor: K.emerald,
+      ),
     ];
 
     return Column(
@@ -2716,7 +2779,7 @@ class _StatsRibbon extends StatelessWidget {
           children: tiles
               .map((t) => Padding(
                     padding: const EdgeInsets.only(bottom: 10),
-                    child: _buildTile(t),
+                    child: _buildTile(context, t),
                   ))
               .toList(),
         );
@@ -2725,15 +2788,15 @@ class _StatsRibbon extends StatelessWidget {
         return Column(
           children: [
             Row(children: [
-              Expanded(child: _buildTile(tiles[0])),
+              Expanded(child: _buildTile(context, tiles[0])),
               const SizedBox(width: 12),
-              Expanded(child: _buildTile(tiles[1])),
+              Expanded(child: _buildTile(context, tiles[1])),
             ]),
             const SizedBox(height: 12),
             Row(children: [
-              Expanded(child: _buildTile(tiles[2])),
+              Expanded(child: _buildTile(context, tiles[2])),
               const SizedBox(width: 12),
-              Expanded(child: _buildTile(tiles[3])),
+              Expanded(child: _buildTile(context, tiles[3])),
             ]),
           ],
         );
@@ -2745,7 +2808,7 @@ class _StatsRibbon extends StatelessWidget {
             .map((e) => Expanded(
                   child: Padding(
                     padding: EdgeInsets.only(left: e.key > 0 ? 14 : 0),
-                    child: _buildTile(e.value),
+                    child: _buildTile(context, e.value),
                   ),
                 ))
             .toList(),
@@ -2755,64 +2818,348 @@ class _StatsRibbon extends StatelessWidget {
     );
   }
 
-  Widget _buildTile(_StatTileData d) {
-    return GlassCard(
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              gradient: LinearGradient(colors: d.gradColors),
-            ),
-            child: Icon(d.icon, color: Colors.white, size: 20),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(d.label,
-                    style:
-                        const TextStyle(fontSize: 11, color: K.textMut)),
-                const SizedBox(height: 2),
-                Text(d.value,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      color: K.textW,
+  Widget _buildTile(BuildContext context, _StatTileData d) {
+    final isCrypto = d.coinId != null;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(K.r),
+        onTap: () {
+          if (isCrypto) {
+            showModalBottomSheet(
+              context: context,
+              backgroundColor: Colors.transparent,
+              isScrollControlled: true,
+              builder: (_) => _CryptoDetailSheet(tile: d),
+            );
+          }
+        },
+        child: GlassCard(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      gradient: LinearGradient(colors: d.gradColors),
                     ),
-                    overflow: TextOverflow.ellipsis),
+                    child: Icon(d.icon, color: Colors.white, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(d.label,
+                            style:
+                                const TextStyle(fontSize: 11, color: K.textMut)),
+                        const SizedBox(height: 2),
+                        Text(d.value,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: K.textW,
+                            ),
+                            overflow: TextOverflow.ellipsis),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: d.badgeColor.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(d.badge,
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: d.badgeColor)),
+                  ),
+                ],
+              ),
+              // Mini sparkline for crypto tiles
+              if (isCrypto && d.chart.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                SizedBox(
+                  height: 32,
+                  child: CustomPaint(
+                    size: const Size(double.infinity, 32),
+                    painter: _SparklinePainter(
+                      values: d.chart,
+                      color: d.chart.last >= d.chart.first ? K.emerald : K.rose,
+                    ),
+                  ),
+                ),
               ],
-            ),
+              // Tap hint for crypto
+              if (isCrypto) ...[
+                const SizedBox(height: 6),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Text('Tap for details',
+                        style: TextStyle(fontSize: 9, color: K.textMut.withValues(alpha: 0.6))),
+                    const SizedBox(width: 3),
+                    Icon(Icons.arrow_forward_ios_rounded,
+                        size: 8, color: K.textMut.withValues(alpha: 0.6)),
+                  ],
+                ),
+              ],
+            ],
           ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: d.badgeColor.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(d.badge,
-                style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: d.badgeColor)),
-          ),
-        ],
+        ),
       ),
     );
   }
 }
 
 class _StatTileData {
-  const _StatTileData(
-      this.icon, this.gradColors, this.label, this.value, this.badge, this.badgeColor);
+  const _StatTileData({
+    required this.icon,
+    required this.gradColors,
+    required this.label,
+    required this.value,
+    required this.badge,
+    required this.badgeColor,
+    this.coinId,
+    this.coinData,
+    this.chart = const [],
+    this.symbol = '',
+  });
   final IconData icon;
   final List<Color> gradColors;
   final String label, value, badge;
   final Color badgeColor;
+  final String? coinId;
+  final dynamic coinData;
+  final List<double> chart;
+  final String symbol;
+}
+
+// ─── Crypto Detail Sheet ─────────────────────────────────────────
+class _CryptoDetailSheet extends StatelessWidget {
+  const _CryptoDetailSheet({required this.tile});
+  final _StatTileData tile;
+
+  @override
+  Widget build(BuildContext context) {
+    final data = tile.coinData;
+    final price = data != null ? (data['usd'] as num).toDouble() : 0.0;
+    final change = data != null ? (data['usd_24h_change'] as num).toDouble() : 0.0;
+    final isUp = change >= 0;
+    final changeColor = isUp ? K.emerald : K.rose;
+    final sign = isUp ? '+' : '';
+    final priceStr = price >= 1000
+        ? '\$${price.toStringAsFixed(2)}'
+        : '\$${price.toStringAsFixed(4)}';
+
+    // Chart stats
+    final chart = tile.chart;
+    final high = chart.isNotEmpty ? chart.reduce(math.max) : 0.0;
+    final low = chart.isNotEmpty ? chart.reduce(math.min) : 0.0;
+    final open = chart.isNotEmpty ? chart.first : 0.0;
+    final weekChange = open > 0 ? ((price - open) / open * 100) : 0.0;
+    final weekSign = weekChange >= 0 ? '+' : '';
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 100, 12, 0),
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * 0.8,
+      ),
+      decoration: BoxDecoration(
+        color: K.bg2,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        border: Border.all(color: K.glassBorder),
+      ),
+      child: ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _dragHandle(),
+              Padding(
+                padding: EdgeInsets.fromLTRB(
+                    24, 8, 24, 24 + MediaQuery.paddingOf(context).bottom),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Header with icon & name
+                    Row(
+                      children: [
+                        Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(14),
+                            gradient: LinearGradient(colors: tile.gradColors),
+                          ),
+                          child: Icon(tile.icon, color: Colors.white, size: 24),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(tile.label,
+                                  style: const TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.w700,
+                                      color: K.textW)),
+                              Text(tile.symbol,
+                                  style: const TextStyle(
+                                      fontSize: 13, color: K.textMut)),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: changeColor.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                isUp ? Icons.trending_up_rounded : Icons.trending_down_rounded,
+                                size: 16,
+                                color: changeColor,
+                              ),
+                              const SizedBox(width: 4),
+                              Text('$sign${change.toStringAsFixed(2)}%',
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w700,
+                                      color: changeColor)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    // Price
+                    Text(priceStr,
+                        style: const TextStyle(
+                            fontSize: 36,
+                            fontWeight: FontWeight.w800,
+                            color: K.textW,
+                            letterSpacing: -1)),
+                    Text('24h change',
+                        style: const TextStyle(fontSize: 12, color: K.textMut)),
+                    const SizedBox(height: 20),
+                    // 7-day sparkline chart
+                    if (chart.isNotEmpty) ...[
+                      const Text('7-Day Price Chart',
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: K.textSec)),
+                      const SizedBox(height: 10),
+                      Container(
+                        height: 120,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.03),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: K.glassBorder),
+                        ),
+                        padding: const EdgeInsets.all(12),
+                        child: CustomPaint(
+                          size: const Size(double.infinity, 96),
+                          painter: _SparklinePainter(
+                            values: chart,
+                            color: chart.last >= chart.first ? K.emerald : K.rose,
+                            strokeWidth: 2.5,
+                            fillOpacity: 0.12,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                    // Stats grid
+                    _statsGrid(high, low, open, weekChange, weekSign, changeColor),
+                    const SizedBox(height: 16),
+                    // Info note
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.03),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: K.glassBorder),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.info_outline_rounded,
+                              size: 14, color: K.textMut),
+                          const SizedBox(width: 8),
+                          const Expanded(
+                            child: Text('Data from CoinGecko · Updated live',
+                                style: TextStyle(
+                                    fontSize: 11, color: K.textMut)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _statsGrid(double high, double low, double open,
+      double weekChange, String weekSign, Color weekColor) {
+    String fmtVal(double v) {
+      if (v >= 1000) return '\$${v.toStringAsFixed(2)}';
+      if (v >= 1) return '\$${v.toStringAsFixed(4)}';
+      return '\$${v.toStringAsFixed(6)}';
+    }
+
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: [
+        _statBox('7d High', fmtVal(high), K.emerald),
+        _statBox('7d Low', fmtVal(low), K.rose),
+        _statBox('7d Open', fmtVal(open), K.cyan),
+        _statBox('7d Change', '$weekSign${weekChange.toStringAsFixed(1)}%',
+            weekChange >= 0 ? K.emerald : K.rose),
+      ],
+    );
+  }
+
+  Widget _statBox(String label, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.15)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 3),
+          Text(value,
+              style: const TextStyle(
+                  fontSize: 13, fontWeight: FontWeight.w700, color: K.textW)),
+        ],
+      ),
+    );
+  }
 }
 
 // ─── News Card (Hacker News) ─────────────────────────────────────
@@ -9854,9 +10201,16 @@ class _MealDetailSheet extends StatelessWidget {
 
 // ─── Sparkline Painter ───────────────────────────────────────────
 class _SparklinePainter extends CustomPainter {
-  _SparklinePainter({required this.values, required this.color});
+  _SparklinePainter({
+    required this.values,
+    required this.color,
+    this.strokeWidth = 2,
+    this.fillOpacity = 0.25,
+  });
   final List<double> values;
   final Color color;
+  final double strokeWidth;
+  final double fillOpacity;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -9882,7 +10236,7 @@ class _SparklinePainter extends CustomPainter {
       Paint()
         ..color = color
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 2
+        ..strokeWidth = strokeWidth
         ..strokeCap = StrokeCap.round,
     );
 
@@ -9897,7 +10251,7 @@ class _SparklinePainter extends CustomPainter {
         ..shader = LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [color.withValues(alpha: 0.25), color.withValues(alpha: 0)],
+          colors: [color.withValues(alpha: fillOpacity), color.withValues(alpha: 0)],
         ).createShader(Offset.zero & size),
     );
   }
