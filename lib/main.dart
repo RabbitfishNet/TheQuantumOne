@@ -9363,6 +9363,9 @@ class _NewsDetailSheet extends StatelessWidget {
 
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 80, 12, 0),
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * 0.85,
+      ),
       decoration: BoxDecoration(
         color: K.bg2,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
@@ -9370,10 +9373,11 @@ class _NewsDetailSheet extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _dragHandle(),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _dragHandle(),
             // ── Hero thumbnail ──
             if (thumb != null)
               SizedBox(
@@ -9494,6 +9498,7 @@ class _NewsDetailSheet extends StatelessWidget {
               ),
             ),
           ],
+          ),
         ),
       ),
     );
