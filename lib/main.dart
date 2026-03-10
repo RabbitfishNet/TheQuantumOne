@@ -140,7 +140,7 @@ class Api {
     ];
     try {
       final futs = subs.map((s) => _c.get(
-        Uri.parse('https://www.reddit.com/r/${s.$1}/hot.json?limit=6&raw_json=1'),
+        Uri.parse('https://www.reddit.com/r/${s.$1}/hot.json?limit=20&raw_json=1'),
         headers: {'User-Agent': 'TheQuantumOne/1.0'},
       ));
       final responses = await Future.wait(futs);
@@ -183,7 +183,7 @@ class Api {
         return false;
       });
       articles.sort((a, b) => (b['score'] as int).compareTo(a['score'] as int));
-      return articles.take(12).toList();
+      return articles.take(50).toList();
     } catch (_) {
       return [];
     }
@@ -3269,7 +3269,7 @@ class _NewsCard extends StatelessWidget {
           else ...[
             if (stories.length > 1) const SizedBox(height: 12),
             // ── Remaining stories ──
-            ...stories.skip(1).take(7).map((s) => _storyRow(context, s)),
+            ...stories.skip(1).take(15).map((s) => _storyRow(context, s)),
           ],
         ],
       ),
