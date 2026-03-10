@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════════════════════
 //  The Quantum One — SaaSLand Interactive Dashboard
-//  Live: Open-Meteo · CoinGecko · HackerNews · TVMaze · TheMealDB
+//  Live: Open-Meteo · CoinGecko · Reddit · TVMaze · TheMealDB
 // ═══════════════════════════════════════════════════════════════════
 
 import 'dart:async';
@@ -98,23 +98,62 @@ class Api {
     }
   }
 
+  /// Reddit public JSON API — rich news with real thumbnails, no key needed.
+  /// Pulls from multiple subreddits for variety.
   static Future<List<Map<String, dynamic>>> news() async {
+    const subs = [
+      ('worldnews', 'World'),
+      ('technology', 'Tech'),
+      ('science', 'Science'),
+      ('business', 'Business'),
+      ('space', 'Space'),
+    ];
     try {
-      final idsRes = await _c.get(
-        Uri.parse('https://hacker-news.firebaseio.com/v0/topstories.json'),
-      );
-      if (idsRes.statusCode != 200) return [];
-      final ids = (jsonDecode(idsRes.body) as List).take(8).toList();
-      final futs = ids.map(
-        (id) => _c.get(
-          Uri.parse('https://hacker-news.firebaseio.com/v0/item/$id.json'),
-        ),
-      );
-      final res = await Future.wait(futs);
-      return res
-          .where((r) => r.statusCode == 200)
-          .map((r) => jsonDecode(r.body) as Map<String, dynamic>)
-          .toList();
+      final futs = subs.map((s) => _c.get(
+        Uri.parse('https://www.reddit.com/r/${s.$1}/hot.json?limit=6&raw_json=1'),
+        headers: {'User-Agent': 'TheQuantumOne/1.0'},
+      ));
+      final responses = await Future.wait(futs);
+      final articles = <Map<String, dynamic>>[];
+      for (var i = 0; i < responses.length; i++) {
+        if (responses[i].statusCode != 200) continue;
+        final body = jsonDecode(responses[i].body);
+        final children = body?['data']?['children'] as List? ?? [];
+        for (final child in children) {
+          final d = child['data'] as Map<String, dynamic>? ?? {};
+          // Skip stickied, self-posts without content, and NSFW
+          if (d['stickied'] == true || d['over_18'] == true) continue;
+          final thumb = d['thumbnail'] as String? ?? '';
+          final preview = d['preview']?['images']?[0]?['source']?['url'] as String?;
+          final imageUrl = (preview != null && preview.isNotEmpty)
+              ? preview
+              : (thumb.startsWith('http') ? thumb : null);
+          articles.add({
+            'title': d['title'] ?? '',
+            'url': d['url'] ?? '',
+            'thumbnail': imageUrl,
+            'score': d['score'] ?? 0,
+            'author': d['author'] ?? '',
+            'subreddit': d['subreddit'] ?? subs[i].$1,
+            'category': subs[i].$2,
+            'num_comments': d['num_comments'] ?? 0,
+            'created_utc': d['created_utc'] ?? 0,
+            'domain': d['domain'] ?? '',
+            'selftext': d['selftext'] ?? '',
+            'permalink': d['permalink'] ?? '',
+          });
+        }
+      }
+      // Deduplicate by URL, sort by score descending, take top 12
+      final seen = <String>{};
+      articles.removeWhere((a) {
+        final url = a['url'] as String;
+        if (seen.contains(url)) return true;
+        seen.add(url);
+        return false;
+      });
+      articles.sort((a, b) => (b['score'] as int).compareTo(a['score'] as int));
+      return articles.take(12).toList();
     } catch (_) {
       return [];
     }
@@ -2655,7 +2694,7 @@ class _StatsRibbon extends StatelessWidget {
       _StatTileData(Icons.bolt_rounded, K.gPurple, 'Solana',
           fmtPrice(sol, '\$142'), fmtChange(sol), changeColor(sol)),
       _StatTileData(Icons.newspaper_rounded, K.gGreen, 'Live Feed',
-          '$newsCount stories', 'HackerNews', K.emerald),
+          '$newsCount stories', 'Reddit', K.emerald),
     ];
 
     return Column(
@@ -2783,12 +2822,22 @@ class _NewsCard extends StatelessWidget {
   final bool loading;
   final Future<void> Function() onRefresh;
 
+  static const _categoryColors = <String, Color>{
+    'World': K.rose,
+    'Tech': K.cyan,
+    'Science': K.emerald,
+    'Business': K.amber,
+    'Space': K.purple,
+  };
+
   @override
   Widget build(BuildContext context) {
     return GlassCard(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ── Header ──
           Row(
             children: [
               Container(
@@ -2798,7 +2847,7 @@ class _NewsCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(10),
                   gradient: const LinearGradient(colors: K.gWarm),
                 ),
-                child: const Icon(Icons.rss_feed_rounded,
+                child: const Icon(Icons.newspaper_rounded,
                     color: Colors.white, size: 18),
               ),
               const SizedBox(width: 12),
@@ -2806,12 +2855,12 @@ class _NewsCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Intelligence Ledger',
+                    Text('Global News Feed',
                         style: TextStyle(
                             fontSize: 17,
                             fontWeight: FontWeight.w700,
                             color: K.textW)),
-                    Text('Live from Hacker News',
+                    Text('World · Tech · Science · Business · Space',
                         style: TextStyle(fontSize: 11, color: K.textMut)),
                   ],
                 ),
@@ -2858,6 +2907,10 @@ class _NewsCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
+
+          // ── Hero story (first article, large thumbnail) ──
+          if (stories.isNotEmpty) _heroStory(context, stories.first),
+
           if (stories.isEmpty && !loading)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 20),
@@ -2866,9 +2919,109 @@ class _NewsCard extends StatelessWidget {
                     style: TextStyle(color: K.textMut)),
               ),
             )
-          else
-            ...stories.take(6).map((s) => _storyRow(context, s)),
+          else ...[
+            if (stories.length > 1) const SizedBox(height: 12),
+            // ── Remaining stories ──
+            ...stories.skip(1).take(7).map((s) => _storyRow(context, s)),
+          ],
         ],
+      ),
+    );
+  }
+
+  /// Large featured card for the top story
+  Widget _heroStory(BuildContext ctx, Map<String, dynamic> s) {
+    final title = s['title'] as String? ?? 'Untitled';
+    final thumb = s['thumbnail'] as String?;
+    final category = s['category'] as String? ?? '';
+    final domain = s['domain'] as String? ?? '';
+    final score = s['score'] as int? ?? 0;
+    final comments = s['num_comments'] as int? ?? 0;
+    final catColor = _categoryColors[category] ?? K.blue;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => _showNewsDetail(ctx, s),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Thumbnail
+            ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: SizedBox(
+                height: 180,
+                width: double.infinity,
+                child: thumb != null
+                    ? Image.network(
+                        thumb,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => _placeholderImage(catColor),
+                      )
+                    : _placeholderImage(catColor),
+              ),
+            ),
+            const SizedBox(height: 10),
+            // Category + domain
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: catColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(category,
+                      style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: catColor,
+                          letterSpacing: 0.5)),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(domain,
+                      style: const TextStyle(fontSize: 11, color: K.textMut),
+                      overflow: TextOverflow.ellipsis),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            // Title
+            Text(title,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: K.textW,
+                    height: 1.4)),
+            const SizedBox(height: 6),
+            // Score + comments
+            Row(
+              children: [
+                Icon(Icons.arrow_upward_rounded, size: 13, color: K.amber),
+                const SizedBox(width: 3),
+                Text(_formatScore(score),
+                    style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: K.amber)),
+                const SizedBox(width: 12),
+                Icon(Icons.chat_bubble_outline_rounded, size: 12, color: K.textMut),
+                const SizedBox(width: 3),
+                Text('$comments',
+                    style: const TextStyle(fontSize: 11, color: K.textMut)),
+                const Spacer(),
+                Text(_timeAgo(((s['created_utc'] as num?) ?? 0).toInt()),
+                    style: const TextStyle(fontSize: 11, color: K.textMut)),
+              ],
+            ),
+            const SizedBox(height: 4),
+            const Divider(color: K.glassBorder, height: 1),
+          ],
+        ),
       ),
     );
   }
@@ -2876,15 +3029,11 @@ class _NewsCard extends StatelessWidget {
   Widget _storyRow(BuildContext ctx, Map<String, dynamic> s) {
     final title = s['title'] as String? ?? 'Untitled';
     final score = s['score'] as int? ?? 0;
-    final url = s['url'] as String?;
-    final domain = _extractDomain(url);
-    final by = s['by'] as String? ?? '';
-    final time = s['time'] as int? ?? 0;
-
-    // Favicon thumbnail from the story's domain
-    final thumbUrl = domain.isNotEmpty
-        ? 'https://www.google.com/s2/favicons?domain=$domain&sz=64'
-        : null;
+    final thumb = s['thumbnail'] as String?;
+    final domain = s['domain'] as String? ?? '';
+    final category = s['category'] as String? ?? '';
+    final comments = s['num_comments'] as int? ?? 0;
+    final catColor = _categoryColors[category] ?? K.blue;
 
     return Material(
       color: Colors.transparent,
@@ -2897,56 +3046,71 @@ class _NewsCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Thumbnail
-              Container(
-                width: 40,
-                height: 40,
-                margin: const EdgeInsets.only(right: 10),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.06),
-                  borderRadius: BorderRadius.circular(10),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: SizedBox(
+                  width: 72,
+                  height: 72,
+                  child: thumb != null
+                      ? Image.network(
+                          thumb,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, _, _) => _placeholderThumb(catColor),
+                        )
+                      : _placeholderThumb(catColor),
                 ),
-                clipBehavior: Clip.antiAlias,
-                child: thumbUrl != null
-                    ? Image.network(
-                        thumbUrl,
-                        width: 40,
-                        height: 40,
-                        fit: BoxFit.contain,
-                        errorBuilder: (_, _, _) => _fallbackIcon(score),
-                      )
-                    : _fallbackIcon(score),
               ),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Category badge
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      margin: const EdgeInsets.only(bottom: 4),
+                      decoration: BoxDecoration(
+                        color: catColor.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(category,
+                          style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700,
+                              color: catColor)),
+                    ),
                     Text(title,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                             fontSize: 13,
+                            fontWeight: FontWeight.w600,
                             color: K.textW,
-                            height: 1.4)),
-                    const SizedBox(height: 3),
-                    Text('$by · $domain · ${_timeAgo(time)}',
-                        style: const TextStyle(
-                            fontSize: 11, color: K.textMut)),
+                            height: 1.3)),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Text(domain,
+                            style: const TextStyle(
+                                fontSize: 10, color: K.textMut)),
+                        const SizedBox(width: 8),
+                        Icon(Icons.arrow_upward_rounded,
+                            size: 11, color: K.amber),
+                        Text(_formatScore(score),
+                            style: const TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: K.amber)),
+                        const SizedBox(width: 6),
+                        Icon(Icons.chat_bubble_outline_rounded,
+                            size: 10, color: K.textMut),
+                        Text(' $comments',
+                            style: const TextStyle(
+                                fontSize: 10, color: K.textMut)),
+                      ],
+                    ),
                   ],
                 ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 7, vertical: 3),
-                decoration: BoxDecoration(
-                  color: K.amber.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text('$score',
-                    style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: K.amber)),
               ),
             ],
           ),
@@ -2955,18 +3119,28 @@ class _NewsCard extends StatelessWidget {
     );
   }
 
-  Widget _fallbackIcon(int score) {
-    return Center(
-      child: Icon(
-        Icons.language_rounded,
-        size: 18,
-        color: score > 200
-            ? K.amber
-            : score > 100
-                ? K.emerald
-                : K.purple,
+  Widget _placeholderImage(Color color) {
+    return Container(
+      color: color.withValues(alpha: 0.12),
+      child: Center(
+        child: Icon(Icons.public_rounded, size: 40, color: color.withValues(alpha: 0.5)),
       ),
     );
+  }
+
+  Widget _placeholderThumb(Color color) {
+    return Container(
+      color: color.withValues(alpha: 0.1),
+      child: Center(
+        child: Icon(Icons.public_rounded, size: 22, color: color.withValues(alpha: 0.5)),
+      ),
+    );
+  }
+
+  static String _formatScore(int score) {
+    if (score >= 10000) return '${(score / 1000).toStringAsFixed(1)}k';
+    if (score >= 1000) return '${(score / 1000).toStringAsFixed(1)}k';
+    return '$score';
   }
 
   void _showNewsDetail(BuildContext ctx, Map<String, dynamic> s) {
@@ -9164,17 +9338,31 @@ class _NewsDetailSheet extends StatelessWidget {
   const _NewsDetailSheet({required this.story});
   final Map<String, dynamic> story;
 
+  static const _categoryColors = <String, Color>{
+    'World': K.rose,
+    'Tech': K.cyan,
+    'Science': K.emerald,
+    'Business': K.amber,
+    'Space': K.purple,
+  };
+
   @override
   Widget build(BuildContext context) {
     final title = story['title'] as String? ?? 'Untitled';
     final score = story['score'] as int? ?? 0;
-    final by = story['by'] as String? ?? 'unknown';
-    final time = story['time'] as int? ?? 0;
+    final author = story['author'] as String? ?? 'unknown';
+    final createdUtc = ((story['created_utc'] as num?) ?? 0).toInt();
     final url = story['url'] as String?;
-    final comments = story['descendants'] as int? ?? 0;
+    final thumb = story['thumbnail'] as String?;
+    final comments = story['num_comments'] as int? ?? 0;
+    final domain = story['domain'] as String? ?? '';
+    final category = story['category'] as String? ?? '';
+    final subreddit = story['subreddit'] as String? ?? '';
+    final selftext = story['selftext'] as String? ?? '';
+    final catColor = _categoryColors[category] ?? K.blue;
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(12, 120, 12, 0),
+      margin: const EdgeInsets.fromLTRB(12, 80, 12, 0),
       decoration: BoxDecoration(
         color: K.bg2,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
@@ -9186,60 +9374,96 @@ class _NewsDetailSheet extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             _dragHandle(),
+            // ── Hero thumbnail ──
+            if (thumb != null)
+              SizedBox(
+                height: 200,
+                width: double.infinity,
+                child: Image.network(
+                  thumb,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => Container(
+                    color: catColor.withValues(alpha: 0.1),
+                    child: Center(
+                      child: Icon(Icons.public_rounded,
+                          size: 48, color: catColor.withValues(alpha: 0.4)),
+                    ),
+                  ),
+                ),
+              ),
             Padding(
               padding: EdgeInsets.fromLTRB(
-                  24, 8, 24, 24 + MediaQuery.paddingOf(context).bottom),
+                  24, 16, 24, 24 + MediaQuery.paddingOf(context).bottom),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Domain thumbnail + title
+                  // Category + subreddit
                   Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (url != null)
-                        Container(
-                          width: 44,
-                          height: 44,
-                          margin: const EdgeInsets.only(right: 12),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.06),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          clipBehavior: Clip.antiAlias,
-                          child: Image.network(
-                            'https://www.google.com/s2/favicons?domain=${_extractDomain(url)}&sz=64',
-                            width: 44,
-                            height: 44,
-                            fit: BoxFit.contain,
-                            errorBuilder: (_, _, _) => const Center(
-                              child: Icon(Icons.language_rounded,
-                                  color: K.textMut, size: 20),
-                            ),
-                          ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: catColor.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(6),
                         ),
-                      Expanded(
-                        child: Text(title,
-                            style: const TextStyle(
-                                fontSize: 18,
+                        child: Text(category,
+                            style: TextStyle(
+                                fontSize: 11,
                                 fontWeight: FontWeight.w700,
-                                color: K.textW,
-                                height: 1.4)),
+                                color: catColor)),
                       ),
+                      const SizedBox(width: 8),
+                      Text('r/$subreddit',
+                          style: const TextStyle(
+                              fontSize: 12, color: K.textMut)),
                     ],
                   ),
                   const SizedBox(height: 12),
+                  // Title
+                  Text(title,
+                      style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: K.textW,
+                          height: 1.4)),
+                  const SizedBox(height: 12),
+                  // Stats badges
                   Wrap(
                     spacing: 10,
                     runSpacing: 8,
                     children: [
-                      _badge(Icons.arrow_upward_rounded, '$score points', K.amber),
-                      _badge(Icons.chat_bubble_outline, '$comments comments', K.cyan),
-                      _badge(Icons.person_outline, by, K.purple),
-                      _badge(Icons.schedule, _timeAgo(time), K.textMut),
+                      _badge(Icons.arrow_upward_rounded,
+                          _formatScore(score), K.amber),
+                      _badge(Icons.chat_bubble_outline,
+                          '$comments comments', K.cyan),
+                      _badge(Icons.person_outline, 'u/$author', K.purple),
+                      _badge(Icons.schedule, _timeAgo(createdUtc), K.textMut),
                     ],
                   ),
-                  if (url != null) ...[
-                    const SizedBox(height: 16),
+                  // Self-text preview
+                  if (selftext.isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.03),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: K.glassBorder),
+                      ),
+                      child: Text(
+                        selftext.length > 300
+                            ? '${selftext.substring(0, 300)}…'
+                            : selftext,
+                        style: const TextStyle(
+                            color: K.textSec, fontSize: 13, height: 1.5),
+                      ),
+                    ),
+                  ],
+                  // Source link
+                  if (url != null && url.isNotEmpty) ...[
+                    const SizedBox(height: 14),
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(12),
@@ -9254,20 +9478,18 @@ class _NewsDetailSheet extends StatelessWidget {
                               color: K.textMut, size: 16),
                           const SizedBox(width: 8),
                           Expanded(
-                            child: Text(
-                              _extractDomain(url),
-                              style: const TextStyle(
-                                  color: K.cyan, fontSize: 12),
-                              overflow: TextOverflow.ellipsis,
-                            ),
+                            child: Text(domain,
+                                style: const TextStyle(
+                                    color: K.cyan, fontSize: 12),
+                                overflow: TextOverflow.ellipsis),
                           ),
                         ],
                       ),
                     ),
                   ],
-                  const SizedBox(height: 12),
-                  const Text('Shared via Hacker News',
-                      style: TextStyle(color: K.textMut, fontSize: 11)),
+                  const SizedBox(height: 10),
+                  Text('via r/$subreddit on Reddit',
+                      style: const TextStyle(color: K.textMut, fontSize: 11)),
                 ],
               ),
             ),
@@ -9275,6 +9497,11 @@ class _NewsDetailSheet extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  static String _formatScore(int score) {
+    if (score >= 1000) return '${(score / 1000).toStringAsFixed(1)}k';
+    return '$score';
   }
 
   Widget _badge(IconData icon, String text, Color color) {
@@ -10007,15 +10234,6 @@ String _timeAgo(int unix) {
   if (diff < 3600) return '${diff ~/ 60}m ago';
   if (diff < 86400) return '${diff ~/ 3600}h ago';
   return '${diff ~/ 86400}d ago';
-}
-
-String _extractDomain(String? url) {
-  if (url == null || url.isEmpty) return 'text post';
-  try {
-    return Uri.parse(url).host.replaceFirst('www.', '');
-  } catch (_) {
-    return 'link';
-  }
 }
 
 String _stripHtml(String html) {
