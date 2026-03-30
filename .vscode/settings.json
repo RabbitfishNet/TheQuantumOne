@@ -1,3 +1,7 @@
 {
-    "cmake.sourceDirectory": "/Users/rabbitfish/Development/TheQuantumOne/linux"
+    "cmake.sourceDirectory": "/Users/rabbitfish/Development/TheQuantumOne/linux",
+    "chat.tools.terminal.autoApprove": {
+        "xcrun": true,
+        "flutter": true
+    }
 }

@@ -45,5 +45,13 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSHealthShareUsageDescription</key>
+	<string>The Quantum One reads your health data to display steps, calories, heart rate, sleep, and distance on your dashboard.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>The Quantum One uses your location to detect whether you are home or away, so it can show the best commute route.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>The Quantum One reads your calendars to show upcoming events on your dashboard.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>The Quantum One reads your calendars to show upcoming events on your dashboard.</string>
 </dict>
 </plist>
